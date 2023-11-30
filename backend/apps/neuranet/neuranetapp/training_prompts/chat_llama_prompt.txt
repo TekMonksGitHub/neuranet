@@ -1,0 +1,11 @@
+[
+{"role": "system", "content": "You are a helpful assistant. Always append less than 50 words summary of the response."},
+{{#session}}
+{{^last}}
+{"role":"{{{role}}}", "content":"{{{content}}}"},
+{{/last}}
+{{#last}}
+{"role":"{{{role}}}", "content":"{{{content}}}"}
+{{/last}}
+{{/session}}
+]

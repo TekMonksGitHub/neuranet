@@ -50,8 +50,8 @@ exports.process = async function(data, promptOrPromptFile, apiKey, model, dontIn
     let response, retries = 0;
     do {    // auto retry if API is overloaded (503 error)
         response = modelObject.read_ai_response_from_samples ? await _getSampleResponse(modelObject.sample_ai_response) : 
-        await rest.postHttps(modelObject.driver.host, modelObject.driver.port, modelObject.driver.path, 
-            {"Authorization": `Bearer ${apiKey}`}, promptObject);
+        await rest.postHttps(modelObject.driver.host, modelObject.driver.port, modelObject.driver.path,modelObject?.model_type =="llama"? 
+        {"Authorization": `Basic ${apiKey}`,"x-api-key":modelObject.x_api_key}:{"Authorization": `Bearer ${apiKey}`}, promptObject); 
         retries++;
     } while (response && ( (modelObject.http_retry_codes && modelObject.http_retry_codes.includes(response.status)) || 
             ((!modelObject.http_retry_codes) && response.status == 503) ) && 

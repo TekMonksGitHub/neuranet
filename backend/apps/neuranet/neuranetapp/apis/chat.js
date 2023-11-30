@@ -23,7 +23,7 @@ const dblayer = require(`${NEURANET_CONSTANTS.LIBDIR}/dblayer.js`);
 const aiutils = require(`${NEURANET_CONSTANTS.LIBDIR}/aiutils.js`);
 
 const REASONS = {INTERNAL: "internal", BAD_MODEL: "badmodel", OK: "ok", VALIDATION:"badrequest", LIMIT: "limit"}, 
-	MODEL_DEFAULT = "chat-gpt35-turbo", CHAT_SESSION_UPDATE_TIMESTAMP_KEY = "__last_update",
+	MODEL_DEFAULT = "llama-2-70b-chat-hf", CHAT_SESSION_UPDATE_TIMESTAMP_KEY = "__last_update",
 	CHAT_SESSION_MEMORY_KEY_PREFIX = "__org_monkshu_neuranet_chatsession", PROMPT_FILE = "chat_prompt.txt",
 	DEBUG_MODE = NEURANET_CONSTANTS.CONF.debug_mode, DEFAULT_MAX_MEMORY_TOKENS = 1000;
 
@@ -36,10 +36,9 @@ exports.doService = async jsonReq => {
 		LOG.error(`Disallowing the API call, as the user ${jsonReq.id} is over their quota.`);
 		return {reason: REASONS.LIMIT, ...CONSTANTS.FALSE_RESULT};
 	}
-
-	const aiKey = crypt.decrypt(NEURANET_CONSTANTS.CONF.ai_key, NEURANET_CONSTANTS.CONF.crypt_key),
-		aiModelToUse = jsonReq.model || MODEL_DEFAULT, aiModelObject = await aiutils.getAIModel(aiModelToUse),
-		aiModuleToUse = `${NEURANET_CONSTANTS.LIBDIR}/${aiModelObject.driver.module}`;
+	const aiModelToUse = jsonReq.model || MODEL_DEFAULT, aiModelObject = await aiutils.getAIModel(aiModelToUse),
+        aiKey = crypt.decrypt(aiModelObject.ai_key || NEURANET_CONSTANTS.CONF.ai_key, NEURANET_CONSTANTS.CONF.crypt_key),
+        aiModuleToUse = `${NEURANET_CONSTANTS.LIBDIR}/${aiModelObject.driver.module}`;
 	let aiLibrary; try{aiLibrary = utils.requireWithDebug(aiModuleToUse, DEBUG_MODE);} catch (err) {
 		LOG.error("Bad AI Library or model - "+aiModuleToUse); 
 		return {reason: REASONS.BAD_MODEL, ...CONSTANTS.FALSE_RESULT};
@@ -54,7 +53,7 @@ exports.doService = async jsonReq => {
 	finalSessionObject[finalSessionObject.length-1].last = true;
 	
 	const response = await aiLibrary.process({session: finalSessionObject}, 
-		`${NEURANET_CONSTANTS.TRAININGPROMPTSDIR}/${PROMPT_FILE}`, aiKey, aiModelToUse);
+		`${NEURANET_CONSTANTS.TRAININGPROMPTSDIR}/${aiModelObject.prompt_file || PROMPT_FILE}`, aiKey, aiModelToUse);
 
 	if (!response) {
 		LOG.error(`AI library error processing request ${JSON.stringify(jsonReq)}`); 
