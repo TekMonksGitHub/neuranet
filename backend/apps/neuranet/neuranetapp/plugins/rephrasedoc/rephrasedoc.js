@@ -11,6 +11,8 @@ const aiutils = require(`${NEURANET_CONSTANTS.LIBDIR}/aiutils.js`);
 const simplellm = require(`${NEURANET_CONSTANTS.LIBDIR}/simplellm.js`);
 const textsplitter = require(`${NEURANET_CONSTANTS.LIBDIR}/textsplitter.js`);
 const langdetector = require(`${NEURANET_CONSTANTS.THIRDPARTYDIR}/langdetector.js`);
+const utils = require(`${CONSTANTS.LIBDIR}/utils.js`);
+
 
 const PROMPT_PARAM = "_promptparam";
 
@@ -38,12 +40,20 @@ async function generate(fileindexer, generatorDefinition) {
     const langSelected = (langArr.includes('zh') && langArr.includes('ja') && generatorDefinition?.defaultlanguage) ?
         generatorDefinition.defaultlanguage : (langArr.includes('zh') ? 'zh' : (langArr.includes('ja') ? 'ja' : langDetected));
 
+    if (generatorDefinition.condition_js) prompt = await  _runJSCode(generatorDefinition.condition_js, {NEURANET_CONSTANTS, langSelected, aiutils })
+
     const rephrasedSplits = []; for (const split of splits) {
         promptData.fragment = split;
         promptData.lang = langSelected; 
         const rephrasedSplit = await simplellm.prompt_answer(prompt, fileindexer.id, fileindexer.org, promptData, modelObject);
         if (!rephrasedSplit) continue;
         rephrasedSplits.push(rephrasedSplit);
+    }
+
+    async function _runJSCode(code, context) {
+        try {return await (utils.createAsyncFunction(code)(context))} catch (err) {
+            LOG.error(`Error running custom JS code error is: ${err}`); return false;
+        }
     }
 
     return {result: true, contentBufferOrReadStream: _ => Buffer.from(rephrasedSplits.join(split_joiners[0]), 
