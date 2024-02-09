@@ -41,7 +41,9 @@ async function generate(fileindexer, generatorDefinition) {
     const rephrasedSplits = []; for (const split of splits) {
         promptData.fragment = split;
         promptData.lang = langSelected; 
-        const rephrasedSplit = await simplellm.prompt_answer(prompt, fileindexer.id, fileindexer.org, promptData, modelObject);
+        const splittedTextLang = langdetector.getISOLang(split),
+              promptToUse = splittedTextLang!="en" && generatorDefinition.prompt_langdetected ? generatorDefinition.prompt_langdetected : generatorDefinition.prompt,
+              rephrasedSplit = await simplellm.prompt_answer(promptToUse, fileindexer.id, fileindexer.org, promptData, modelObject);
         if (!rephrasedSplit) continue;
         rephrasedSplits.push(rephrasedSplit);
     }
