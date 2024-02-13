@@ -100,6 +100,7 @@ exports.answer = async (params) => {
 	const paramsChat = { id, org, maintain_session: true, session_id, model: aiModelObjectForChat,
             session: [{"role": aiModelObjectForChat.user_role, "content": knowledegebaseWithQuestion}] };
 	const response = await llmchat.chat(paramsChat);
-
+	if(response.response)
+	response.response=encodeURI(response.response)
 	return {...response, metadatas: metadatasForResponse};
 }
