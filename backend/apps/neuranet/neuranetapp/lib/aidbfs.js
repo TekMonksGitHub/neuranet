@@ -74,7 +74,8 @@ async function ingestfile(pathIn, referencelink, id, org, brainid, lang, streamG
         LOG.info(`Starting text extraction of file ${pathIn}.`);
         fileContents = await neuranetutils.readFullFile(await _getExtractedTextStream(), "utf8");
         LOG.info(`Ended text extraction, starting TFIDF ingestion of file ${pathIn}.`);
-        if (!lang) {lang = langdetector.getISOLang(fileContents); LOG.info(`Autodetected language ${lang} for file ${pathIn}.`);}
+        lang = langdetector.getISOLang(fileContents); // Better to detect language as Pregen (translated) Docs might be having different language than original doc
+        LOG.info(`Autodetected language ${lang} for file ${pathIn}.`);
         metadata.lang = lang; tfidfDB.create(fileContents, metadata, dontRebuildDBs, lang);
     } catch (err) {
         LOG.error(`TF.IDF ingestion failed for path ${pathIn} for ID ${id} and org ${org} with error ${err}.`); 
