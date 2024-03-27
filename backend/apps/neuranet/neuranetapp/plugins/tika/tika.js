@@ -13,6 +13,7 @@
 const fs = require("fs");
 const path = require("path");
 const fspromises = fs.promises;
+const crypto = require("crypto");
 const stream = require("stream");
 const process = require('process');
 const mustache = require("mustache");
@@ -34,7 +35,8 @@ exports.initAsync = async _ => {
         const _toUnixPath = pathIn => pathIn.split(path.sep).join(path.posix.sep);
         const jsonConfParsed = mustache.render(await fspromises.readFile(`${__dirname}/tika.json`, "utf8"), 
             {__dirname: _toUnixPath(__dirname), 
-                java_home: `${_toUnixPath(NEURANET_CONSTANTS.CONF.java_home||process.env.JAVA_HOME)}/bin/${JAVA_EXE}`}); 
+                java_home: `${_toUnixPath(NEURANET_CONSTANTS.CONF.java_home||process.env.JAVA_HOME)}/bin/${JAVA_EXE}`,
+                env: process.env}); 
         tikaconf = JSON.parse(jsonConfParsed); 
     } catch (err) { LOG.error(`Can't read Tika configuration. The error was ${err}.`); throw err; }
 
@@ -62,9 +64,6 @@ exports.getContentStream = async function (inputstream, filepath, forcetika) {
         LOG.error(error); throw(error);
     }
 
-    const basename = path.basename(filepath), extension = path.extname(filepath);
-    if (!tikaconf.supported_types.includes(extension)) throw("Unsupported file");
-
     if ((!forcetika) && filepath.toLowerCase().endsWith(".text") || filepath.toLowerCase().endsWith(".txt")) {
         LOG.info(`Tika.js using native text reader assuming UTF8 for the file ${filepath}.`);
         return inputstream;
@@ -75,34 +74,51 @@ exports.getContentStream = async function (inputstream, filepath, forcetika) {
     }
 
     LOG.info(`Tika.js using 3P Apache Tika libraries for the file ${filepath}.`);
+    const extension = path.extname(filepath);
+    if (!tikaconf.supported_types.includes(extension)) throw(`Unsupported file ${filepath}`);
+
+    const _md5sum = text => crypto.createHash("md5").update(text).digest("hex");
+    const basename = path.basename(filepath), stats = await fspromises.stat(filepath);
+    const tempPrefix = _md5sum(filepath+"_"+stats.size+"_"+stats.mtimeMs);
+    const finalReadPath = `${TIKA_TEMP_SUBDIR_READ}/${tempPrefix}_${basename}`;
+    const finalWritePath = `${TIKA_TEMP_SUBDIR_WRITE}/${tempPrefix}_${basename}.txt`;
+    const _canAccessFile = async filepath => { try{
+        await fspromises.access(filepath, fs.R_OK | fs.W_OK); return true;} catch (err) {return false;} };
+    const already_read = await _canAccessFile(finalReadPath), already_extracted = await _canAccessFile(finalWritePath);
 
     const workingareaReadPath = `${TIKA_TEMP_SUBDIR_READ}/${Date.now()}_${basename}`;
     const workingareaWritePath = `${TIKA_TEMP_SUBDIR_WRITE}/${Date.now()}_${basename}.txt`;
-    await _copyFileToWorkingArea(inputstream, workingareaReadPath);
-    const outstream = fs.createWriteStream(workingareaWritePath);
-    const tikaExecutor = _ => new Promise(async (resolve, reject) => {
-        let resolved = false; 
-        const tikaoptions = [...tikaconf.tikaoptions, `--config=${await _getTikaConfig(basename)}`];
-        const platformDependentArg = process.platform === "linux" ? ["org.apache.tika.cli.TikaCLI"] : ["-jar", tikaconf.tikajar];
-        LOG.info(`Spawning Tika with ${tikaconf.java} ${tikaconf.javaoptions.join(" ")} -cp ${tikaconf.classpath.join(JAVA_CP_JOIN_CHAR)} ${platformDependentArg.join(" ")}  ${tikaoptions.join(" ")} ${workingareaReadPath}`);    
-        try {
-            const execed_process = spawn(`${tikaconf.java}`, [...tikaconf.javaoptions, "-cp", tikaconf.classpath.join(JAVA_CP_JOIN_CHAR), 
-                ...platformDependentArg, ...tikaoptions, workingareaReadPath]);
-            execed_process.stdout.on("data", text => outstream.write(text));
-            execed_process.on("close", _ => outstream.end());
-            execed_process.stderr.on("error", error => {
-                LOG.error(`Tika error parsing file ${filepath} error is ${error}.`); outstream.end();
+    if (!already_read) {await _copyFileToWorkingArea(inputstream, workingareaReadPath); 
+        await fspromises.rename(workingareaReadPath, finalReadPath);}
+    if (!already_extracted) {
+        const outstream = fs.createWriteStream(workingareaWritePath);
+        const tikaExecutor = _ => new Promise(async (resolve, reject) => {
+            let resolved = false; 
+            const tikaoptions = [...tikaconf.tikaoptions, `--config=${await _getTikaConfig(basename)}`];
+            LOG.info(`Spawning Tika with ${tikaconf.java} ${tikaconf.javaoptions.join(" ")} -cp ${tikaconf.classpath.join(JAVA_CP_JOIN_CHAR)} ${tikaconf.tiakexec}  ${tikaoptions.join(" ")} ${finalReadPath}`);    
+            try {
+                const execed_process = spawn(`${tikaconf.java}`, [...tikaconf.javaoptions, "-cp", tikaconf.classpath.join(JAVA_CP_JOIN_CHAR), 
+                    tikaconf.tiakexec, ...tikaoptions, finalReadPath]);
+                execed_process.stdout.on("data", text => {
+                    LOG.debug(`Tika plugin added ${text.length} bytes of parsed data from file ${filepath} to temporary file ${workingareaWritePath}.`);
+                    outstream.write(text)
+                });
+                execed_process.on("close", _ => outstream.end());
+                execed_process.stderr.on("error", error => {
+                    LOG.error(`Tika error parsing file ${filepath} error is ${error}.`); outstream.end();
+                    if (!resolved) {resolved = true; reject(error);}
+                });
+                outstream.on("finish", async _ => { if (!resolved) {
+                    resolved = true; await fspromises.rename(workingareaWritePath, finalWritePath);
+                    resolve(fs.createReadStream(finalWritePath)); } });
+            } catch (err) {
+                LOG.error(`Tika error parsing file ${filepath} error is ${err}.`); outstream.end();
                 if (!resolved) {resolved = true; reject(error);}
-            });
-            outstream.on("finish", _ => { if (!resolved) {
-                resolved = true; resolve(fs.createReadStream(workingareaWritePath)); } });
-        } catch (err) {
-            LOG.error(`Tika error parsing file ${filepath} error is ${err}.`); outstream.end();
-            if (!resolved) {resolved = true; reject(error);}
-        }
-    });
+            }
+        });
 
-    return ticketing.getTicket(tikaExecutor, true, `Tika plugin is in a wait to receive execution ticket for file ${filepath}.`);
+        return ticketing.getTicket(tikaExecutor, true, `Tika plugin is in a wait to receive execution ticket for file ${filepath}.`);
+    } else return fs.createReadStream(finalWritePath);
 }
 
 exports.getContent = async function(filepath, forcetika) {
