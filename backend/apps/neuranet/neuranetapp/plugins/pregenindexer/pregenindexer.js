@@ -13,6 +13,8 @@ const path = require("path");
 const conf = require(`${__dirname}/pregenindexer.json`);
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const aiapp = require(`${NEURANET_CONSTANTS.LIBDIR}/aiapp.js`);
+const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
+
 
 /** @return true if we can handle else false */
 exports.canHandle = async fileindexer => {
@@ -29,24 +31,30 @@ exports.canHandle = async fileindexer => {
  * @param {object} fileindexer The file indexer object
  * @returns true on success or false on failure
  */
-exports.ingest = async function(fileindexer) {
-    await fileindexer.start(); 
-    const pregenSteps = await _getPregenStepsAIApp(fileindexer);
+exports.ingest = async function (fileindexer) {
+    await fileindexer.start();_updatePercentage(fileindexer,7);
+    const pregenSteps = await _getPregenStepsAIApp(fileindexer); _updatePercentage(fileindexer,10);
+    let previous_percentage = 10;
+    const percent_weight = 80 / pregenSteps.length;
     for (const pregenStep of pregenSteps) {
         if (!await _condition_to_run_met(pregenStep)) continue;    // run only if condition is satisfied
         const pregenResult = await pregenStep.generate(fileindexer);
+        _updatePercentage(fileindexer,percent_weight+previous_percentage-(percent_weight*0.1));
+        previous_percentage = percent_weight+previous_percentage-(percent_weight*0.1);
         if (pregenResult.result) {
             const addGeneratedFileToCMSResult = await fileindexer.addFileToCMSRepository(
                 pregenResult.contentBufferOrReadStream(), pregenStep.cmspath, pregenStep.comment, true);
             const indexResult = addGeneratedFileToCMSResult ? await fileindexer.addFileToAI(pregenStep.cmspath, pregenResult.lang) : false;
-            if (!indexResult.result) 
+            if (!indexResult.result)
                 LOG.error(`Pregen failed at step ${pregenStep.label} in add generated file.`);
         } else LOG.error(`Pregen failed at step ${pregenStep.label} in generate.`);
+        _updatePercentage(fileindexer,previous_percentage+(percent_weight*0.1));
+        previous_percentage+=5;
     }
-    const rootIndexerResult = await fileindexer.addFileToAI(); 
+    const rootIndexerResult = await fileindexer.addFileToAI();
     await fileindexer.end(); if (!rootIndexerResult.result) LOG.error(`Pregen failed at adding original file (AI DB ingestion failure).`);
     return rootIndexerResult.result;
-}
+ }
 
 /**
  * Will uningest the given file and uningest the corresponding pregen (GARAGe) files for it.
@@ -126,3 +134,8 @@ async function _runJSCode(code, context) {
         LOG.error(`Error running custom JS code error is: ${err}`); return false;
     }
 }
+
+function _updatePercentage(fileindexer, percentage){
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING,
+        result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.INGESTED, id: fileindexer.id, org: fileindexer.org, path: fileindexer.filepath, cmspath: fileindexer.cmspath, extraInfo: fileindexer.extraInfo, percentage: percentage});
+ }

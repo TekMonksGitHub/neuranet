@@ -92,12 +92,12 @@ async function _handleFileEvent(message) {
     const awaitPromisePublishFileEvent = async (promise, fullpath, type, id, org, extraInfo) => {  // this is mostly to inform listeners about file being processed events
         const cmspath = await cms.getCMSRootRelativePath({xbin_id: id, xbin_org: org}, fullpath, extraInfo);
         // we have started processing a file
-        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
-            result: true, subtype: type, id, org, path: fullpath, cmspath, extraInfo});
+        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING,
+            result: true, subtype: type, id, org, path: fullpath, cmspath, extraInfo, percentage:0});
         const result = await promise;   // wait for it to complete
         // we have finished processing this file
         blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED, 
-            path: fullpath, result: result?result.result:false, subtype: type, id, org, cmspath, extraInfo});
+            path: fullpath, result: result?result.result:false, subtype: type, id, org, cmspath, extraInfo, percentage:100});
     }
 
     // only the testing classes currently use NEURANET_CONSTANTS.EVENTS.* as they directly upload to the
