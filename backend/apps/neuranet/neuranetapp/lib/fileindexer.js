@@ -92,12 +92,12 @@ async function _handleFileEvent(message) {
     const awaitPromisePublishFileEvent = async (promise, fullpath, type, id, org, extraInfo) => {  // this is mostly to inform listeners about file being processed events
         const cmspath = await cms.getCMSRootRelativePath({xbin_id: id, xbin_org: org}, fullpath, extraInfo);
         // we have started processing a file
-        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
-            result: true, subtype: type, id, org, path: fullpath, cmspath, extraInfo});
+        if(type!==NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.UNINGESTED)blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+            result: true, subtype: type, id, org, path: fullpath, cmspath, extraInfo, percentage: NEURANET_CONSTANTS.PERCENTAGE_START});
         const result = await promise;   // wait for it to complete
         // we have finished processing this file
-        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED, 
-            path: fullpath, result: result?result.result:false, subtype: type, id, org, cmspath, extraInfo});
+        if(type!==NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.UNINGESTED)blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED, 
+            path: fullpath, result: result?result.result:false, subtype: type, id, org, cmspath, extraInfo, percentage: NEURANET_CONSTANTS.PERCENTAGE_FINAL});
     }
 
     // only the testing classes currently use NEURANET_CONSTANTS.EVENTS.* as they directly upload to the
@@ -159,7 +159,7 @@ async function _renamefile(from, to, id, org, extraInfo) {
 async function _initPluginsAsync() {
     for (const file_plugin of conf.file_handling_plugins) {
         const pluginThis = NEURANET_CONSTANTS.getPlugin(file_plugin);
-        if (pluginThis.initAsync) await pluginThis.initAsync();
+        if (pluginThis.initAsync) await pluginThis.initAsync(); 
     }
 }
 

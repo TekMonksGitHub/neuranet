@@ -13,6 +13,8 @@ const path = require("path");
 const conf = require(`${__dirname}/pregenindexer.json`);
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const aiapp = require(`${NEURANET_CONSTANTS.LIBDIR}/aiapp.js`);
+const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
+const percent_storage = {};
 
 /** @return true if we can handle else false */
 exports.canHandle = async fileindexer => {
@@ -32,9 +34,11 @@ exports.canHandle = async fileindexer => {
 exports.ingest = async function(fileindexer) {
     await fileindexer.start(); 
     const pregenSteps = await _getPregenStepsAIApp(fileindexer);
+    _update_percentage(fileindexer, undefined);
     for (const pregenStep of pregenSteps) {
         if (!await _condition_to_run_met(pregenStep)) continue;    // run only if condition is satisfied
         const pregenResult = await pregenStep.generate(fileindexer);
+        _update_percentage(fileindexer, pregenSteps.length);
         if (pregenResult.result) {
             const addGeneratedFileToCMSResult = await fileindexer.addFileToCMSRepository(
                 pregenResult.contentBufferOrReadStream(), pregenStep.cmspath, pregenStep.comment, true);
@@ -61,8 +65,9 @@ exports.uningest = async function(fileindexer) {
         if (!await _condition_to_run_met(pregenStep)) continue;    // run only if condition is satisfied
         const delGeneratedFileFromCMSResult = await fileindexer.deleteFileFromCMSRepository(pregenStep.cmspath, true);
         const stepIndexerResult = delGeneratedFileFromCMSResult ? await fileindexer.removeFileFromAI(pregenStep.cmspath) : {result: false};
-        if (!stepIndexerResult.result) LOG.error(`Pregen removal failed at step ${pregenStep.label} in removing generated file ${pregenStep.cmspath}.`); 
-        else LOG.error(`Pregen removal succeeded at step ${pregenStep.label} in removing generated file ${pregenStep.cmspath}.`); 
+        if (!stepIndexerResult.
+            result) LOG.error(`Pregen removal failed at step ${pregenStep.label} in removing generated file ${pregenStep.cmspath}.`); 
+        else LOG.info(`Pregen removal succeeded at step ${pregenStep.label} in removing generated file ${pregenStep.cmspath}.`); 
     }
     
     const rootIndexerResult = await fileindexer.removeFileFromAI(); await fileindexer.end();
@@ -128,4 +133,12 @@ async function _runJSCode(code, context) {
     try {return await (utils.createAsyncFunction(code)(context))} catch (err) {
         LOG.error(`Error running custom JS code error is: ${err}`); return false;
     }
+}
+
+function _update_percentage(fileindexer, steps){
+    if(!percent_storage[fileindexer.cmspath]) percent_storage[fileindexer.cmspath] = NEURANET_CONSTANTS.PERCENTAGE_START; 
+    const previous_percentage = percent_storage[fileindexer.cmspath];
+    const updated_percentage = previous_percentage+(steps? (NEURANET_CONSTANTS.PERCENTAGE_PREGEN_STEPS/steps):NEURANET_CONSTANTS.PERCENTAGE_INITIAL);
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.INGESTED, id: fileindexer.id, org: fileindexer.org, path: fileindexer.filepath, cmspath: fileindexer.cmspath, extraInfo: fileindexer.extraInfo, percentage: updated_percentage});
+    percent_storage[fileindexer.cmspath] = updated_percentage;
 }
