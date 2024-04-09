@@ -25,6 +25,10 @@ exports.AIAPPDIR = path.resolve(`${BACKEND_ROOT}/aiapps`);
 exports.AIAPPMODES = {EDIT: 'editaiapp', NORMAL: 'normal'};
 exports.DEFAULT_ORG_DEFAULT_AIAPP = "_org_neuranet_default_aiapp_";
 
+exports.PERCENTAGE_START = 0; // percentage on Start of Event Processing
+exports.PERCENTAGE_INITIAL = 10; // percentage weight for Initialization
+exports.PERCENTAGE_PREGEN_STEPS = 80; // percentage weight for Pregen Steps
+exports.PERCENTAGE_FINAL = 100; // percentage on End of Event Prrocessing
 
 exports.NEURANET_DOCID = "aidb_docid";
 exports.NEURANET_LANGID = "aidb_langid";
