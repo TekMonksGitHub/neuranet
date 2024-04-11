@@ -10,6 +10,8 @@ interface:                                  # the interface details
 endpoint: llmflow                           # the API endpoint - usually llmflow
 users: ["*"]                                # the * means all users, else must be an array of user IDs
 api_uploads_cms_path: uploads               # where files are uploaded by index, unindex APIs
+system_generated_files_path: _neuranet_generated      # directory path where all pregen generated documents stored  
+system_generated_files_extension: txt                 # extnsion of pregen generated files
 
 # all flows are sequence of commands which follow the same syntax - command, in, out - in is the input
 # to the command, out is the variable holding the output and name points to the command module and entry

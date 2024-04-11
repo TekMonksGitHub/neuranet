@@ -35,7 +35,8 @@ exports.doService = async (jsonReq, _servObject, _headers, _url) => {
     const aiappid = await brainhandler.getAppID(jsonReq.id, jsonReq.org, {id: jsonReq.id, org: jsonReq.org, aiappid: jsonReq.aiappid});
     const result = await llmflowrunner[aiapp.DEFAULT_ENTRY_FUNCTIONS.llm_flow](
         jsonReq.question, jsonReq.id, jsonReq.org, aiappid, jsonReq, jsonReq.flow||"llm_flow");
+    const {system_generated_files_path, system_generated_files_extension } = await aiapp.getAIApp(jsonReq.id, jsonReq.org, aiappid);
+    if(result.result) result.metadatas.map(metadata => metadata.referencelink = metadata.referencelink.startsWith(`./${system_generated_files_path}`)? metadata.referencelink.replace(`./${system_generated_files_path}/`, '').replace(`.${system_generated_files_extension}`,'').split("_").slice(1).join() : metadata.referencelink);
     return result;
 }
-
 const validateRequest = jsonReq => (jsonReq && jsonReq.id && jsonReq.question && jsonReq.org);
