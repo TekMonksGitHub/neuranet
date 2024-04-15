@@ -13,6 +13,7 @@ const path = require("path");
 const conf = require(`${__dirname}/pregenindexer.json`);
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const aiapp = require(`${NEURANET_CONSTANTS.LIBDIR}/aiapp.js`);
+const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
 
 /** @return true if we can handle else false */
 exports.canHandle = async fileindexer => {
@@ -30,11 +31,17 @@ exports.canHandle = async fileindexer => {
  * @returns true on success or false on failure
  */
 exports.ingest = async function(fileindexer) {
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+        result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.INGESTED, id:fileindexer.id, org:fileindexer.org, path: fileindexer.filepath, cmspath:fileindexer.cmspath, extraInfo, percentage: NEURANET_CONSTANTS.PERCENTAGE_START});
     await fileindexer.start(); 
     const pregenSteps = await _getPregenStepsAIApp(fileindexer);
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+        result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.PROGRESS_PERCENTAGE, id: fileindexer.id, org: fileindexer.org, path: fileindexer.filepath, cmspath: fileindexer.cmspath, extraInfo: fileindexer.extraInfo, stepName:NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_PROGRESS_PERCENTAGE_NAMES.INITIAL, noOfSteps:pregenSteps.length});
     for (const pregenStep of pregenSteps) {
         if (!await _condition_to_run_met(pregenStep)) continue;    // run only if condition is satisfied
         const pregenResult = await pregenStep.generate(fileindexer);
+        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+            result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.PROGRESS_PERCENTAGE, id: fileindexer.id, org: fileindexer.org, path: fileindexer.filepath, cmspath: fileindexer.cmspath, extraInfo: fileindexer.extraInfo, stepName:NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_PROGRESS_PERCENTAGE_NAMES.PREGEN, noOfSteps:pregenSteps.length});
         if (pregenResult.result) {
             const addGeneratedFileToCMSResult = await fileindexer.addFileToCMSRepository(
                 pregenResult.contentBufferOrReadStream(), pregenStep.cmspath, pregenStep.comment, true);
@@ -44,6 +51,8 @@ exports.ingest = async function(fileindexer) {
         } else LOG.error(`Pregen failed at step ${pregenStep.label} in generate for file ${pregenStep.cmspath}.`);
     }
     const rootIndexerResult = await fileindexer.addFileToAI(); await fileindexer.end(); 
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+        result: rootIndexerResult?rootIndexerResult.result:false, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.INGESTED, id:fileindexer.id, org:fileindexer.org, path: fileindexer.filepath, cmspath:fileindexer.cmspath, extraInfo, percentage: NEURANET_CONSTANTS.PERCENTAGE_FINAL});
     if (!rootIndexerResult.result) LOG.error(`Pregen failed at adding original file (AI DB ingestion failure) for file ${fileindexer.cmspath}.`);
     else LOG.info(`Pregen succeeded at adding original file (AI DB ingestion) for file ${fileindexer.cmspath}.`);
     return rootIndexerResult.result;
@@ -77,10 +86,16 @@ exports.uningest = async function(fileindexer) {
  * @returns true on success or false on failure
  */
 exports.rename = async function(fileindexer) {
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+        result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.RENAMED, id:fileindexer.id, org:fileindexer.org, path: fileindexer.filepath, cmspath:fileindexer.cmspath, extraInfo, percentage: NEURANET_CONSTANTS.PERCENTAGE_START});
     await fileindexer.start();
     const pregenSteps = await _getPregenStepsAIApp(fileindexer); 
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+        result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.PROGRESS_PERCENTAGE, id: fileindexer.id, org: fileindexer.org, path: fileindexer.filepath, cmspath: fileindexer.cmspath, extraInfo: fileindexer.extraInfo, stepName:NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_PROGRESS_PERCENTAGE_NAMES.INITIAL, noOfSteps:pregenSteps.length});
     for (const pregenStep of pregenSteps) {
         if (!await _condition_to_run_met(pregenStep)) continue;    // run only if condition is satisfied
+        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+            result: true, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.PROGRESS_PERCENTAGE, id: fileindexer.id, org: fileindexer.org, path: fileindexer.filepath, cmspath: fileindexer.cmspath, extraInfo: fileindexer.extraInfo, stepName:NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_PROGRESS_PERCENTAGE_NAMES.PREGEN, noOfSteps:pregenSteps.length});
         const renameGeneratedFileToCMSResult = await fileindexer.renameFileFromCMSRepository(pregenStep.cmspath,
             pregenStep.cmspathTo, true);
         const stepIndexerResult = renameGeneratedFileToCMSResult ? 
@@ -89,6 +104,8 @@ exports.rename = async function(fileindexer) {
     }
 
     const rootIndexerResult = await fileindexer.renameFileToAI(); 
+    blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type: NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+        result: rootIndexerResult?rootIndexerResult.result:false, subtype: NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.RENAMED, id:fileindexer.id, org:fileindexer.org, path: fileindexer.filepath, cmspath:fileindexer.cmspath, extraInfo, percentage: NEURANET_CONSTANTS.PERCENTAGE_FINAL});
     await fileindexer.end(); if (!rootIndexerResult.result) LOG.error(`Pregen failed at renaming original file (AI DB rename failure).`);
     return rootIndexerResult.result;
 }
