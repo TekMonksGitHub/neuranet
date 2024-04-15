@@ -14,9 +14,10 @@ exports.initSync = _ => blackboard.subscribe(NEURANET_CONSTANTS.NEURANETEVENT, m
     if ((message.type != NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING && 
         message.type != NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED) || (!message.path)) return;  // we only care about these two
 
-    const usermemory = _getUserMemory(message.id, message.org)
+    const usermemory = _getUserMemory(message.id, message.org);
+    message = calculatePercentage(message);
     usermemory[message.cmspath] = {...message, path: message.cmspath,   // overwrite full path as we don't want top send this out
-        done:  message.type == NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED, result: message.result};
+    done:  message.type == NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED, result: message.result, percentage:message.percentage};
     _setUserMemory(message.id, message.org, usermemory);
 });
 
@@ -25,6 +26,13 @@ exports.doService = async jsonReq => {
 
     const usermemory = _getUserMemory(jsonReq.id, jsonReq.org);
     return {events: (usermemory||{}), ...CONSTANTS.TRUE_RESULT};
+}
+
+const calculatePercentage = (message) => {
+    if(message.type == NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSED) message.percentage = 100;
+    else if(message.subtype!==NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.FILE_PROGRESS) message.percentage=10;
+    else message.percentage = ((message.stepNo+1)/message.noOfSteps)*90;
+    return message;
 }
 
 const _setUserMemory = (id, org, usermemory) => { const memory = MEM_TO_USE.get(EVENTS_KEY, {}); 

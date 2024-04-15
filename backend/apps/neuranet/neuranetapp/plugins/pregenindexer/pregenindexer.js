@@ -13,6 +13,7 @@ const path = require("path");
 const conf = require(`${__dirname}/pregenindexer.json`);
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const aiapp = require(`${NEURANET_CONSTANTS.LIBDIR}/aiapp.js`);
+const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
 
 /** @return true if we can handle else false */
 exports.canHandle = async fileindexer => {
@@ -32,9 +33,11 @@ exports.canHandle = async fileindexer => {
 exports.ingest = async function(fileindexer) {
     await fileindexer.start(); 
     const pregenSteps = await _getPregenStepsAIApp(fileindexer);
-    for (const pregenStep of pregenSteps) {
+    for (const [i, pregenStep] of pregenSteps.entries()) {
         if (!await _condition_to_run_met(pregenStep)) continue;    // run only if condition is satisfied
         const pregenResult = await pregenStep.generate(fileindexer);
+        blackboard.publish(NEURANET_CONSTANTS.NEURANETEVENT, {type:NEURANET_CONSTANTS.EVENTS.AIDB_FILE_PROCESSING, 
+            result:true, subtype:NEURANET_CONSTANTS.FILEINDEXER_FILE_PROCESSED_EVENT_TYPES.FILE_PROGRESS, id:fileindexer.id, org:fileindexer.org, path:fileindexer.filepath, cmspath:fileindexer.cmspath, extraInfo:fileindexer.extraInfo, stepNo:i, noOfSteps:pregenSteps.length});
         if (pregenResult.result) {
             const addGeneratedFileToCMSResult = await fileindexer.addFileToCMSRepository(
                 pregenResult.contentBufferOrReadStream(), pregenStep.cmspath, pregenStep.comment, true);
@@ -88,7 +91,7 @@ exports.rename = async function(fileindexer) {
         if (!stepIndexerResult.result) LOG.error(`Pregen rename failed at step ${pregenStep.label} in rename generated file.`);
     }
 
-    const rootIndexerResult = await fileindexer.renameFileToAI(); 
+    const rootIndexerResult = await fileindexer.renameFileToAI();
     await fileindexer.end(); if (!rootIndexerResult.result) LOG.error(`Pregen failed at renaming original file (AI DB rename failure).`);
     return rootIndexerResult.result;
 }
