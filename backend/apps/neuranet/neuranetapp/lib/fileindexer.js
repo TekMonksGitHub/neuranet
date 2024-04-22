@@ -15,6 +15,7 @@ const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const path = require("path");
 const mustache = require("mustache");
 const cms = require(`${XBIN_CONSTANTS.LIB_DIR}/cms.js`);
+const aiapp = require(`${NEURANET_CONSTANTS.LIBDIR}/aiapp.js`);
 const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
 const aidbfs = require(`${NEURANET_CONSTANTS.LIBDIR}/aidbfs.js`);
 const uploadfile = require(`${XBIN_CONSTANTS.API_DIR}/uploadfile.js`);
@@ -176,9 +177,11 @@ async function _searchForFilePlugin(fileindexerForFile) {
 }
 
 async function _getFileIndexer(pathIn, id, org, cmspath, extraInfo, lang) {
+    const aiappid = await brainhandler.getAppID(id, org, extraInfo);
+    const {system_files_path, system_files_extension} = await aiapp.getAIApp(id, org, aiappid);
     return {
         filepath: pathIn, id, org, lang, minimum_success_percent: DEFAULT_MINIMIMUM_SUCCESS_PERCENT, cmspath,
-        aiappid: await brainhandler.getAppID(id, org, extraInfo), extrainfo: extraInfo,
+        aiappid: aiappid, extraInfo: extraInfo, systemFilesPath: system_files_path, systemFilesExtension: system_files_extension,
         addFileToCMSRepository: (contentBufferOrReadStream, cmspath, comment, noaievent) =>
             exports.addFileToCMSRepository(id, org, contentBufferOrReadStream, cmspath, comment, extraInfo, noaievent),
         deleteFileFromCMSRepository: (cmspath, noaievent) => exports.deleteFileFromCMSRepository(id, org, 

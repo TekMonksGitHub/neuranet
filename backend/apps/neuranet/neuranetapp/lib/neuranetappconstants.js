@@ -29,8 +29,6 @@ exports.REFERENCELINK_METADATA_KEY = "referencelink";
 exports.NEURANET_DOCID = "aidb_docid";
 exports.NEURANET_LANGID = "aidb_langid";
 
-exports.GENERATED_FILES_FOLDER = "_neuranet_generated";
-
 exports.getPlugin = name => require(`${exports.LIBDIR}/pluginhandler.js`).getPlugin(name);
 
 exports.NEURANETEVENT = "__org_monkshu_neuranet_event";
