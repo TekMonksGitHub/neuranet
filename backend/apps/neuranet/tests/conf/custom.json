@@ -1,0 +1,51 @@
+{
+	"testcases": [
+		{
+			"aiindex": ["Technology Allocation.docx"],
+			"aisearch": ["Guidelines for Proper Care of the Laptop", "explain employee laptop & accessories"],
+			"testDescription":"upload english file and ask query"
+		},
+		{
+			"aiindex": ["3.缴款通知及挂牌业务资金划转单.pdf"],
+			"aisearch": ["北金所账户的账号是多少？", "什么是付款通知书和挂牌业务资金划拨单"],
+			"testDescription":"upload chinese file and ask query"
+		},
+		{
+			"aiindex": ["サービス _ Horizon One株式会社.pdf"],
+			"aisearch": ["北金所账户的账号是多少？", "什么是付款通知书和挂牌业务资金划拨单"],
+			"testDescription":"upload japanese file and ask query"
+		},
+		{
+			"aiindex": ["file_example_XLSX_100.xlsx", "Leave Management Policy 2024.docx", "Neuranet Wingman - AI for Business.pptx","230710_Christianson_AUKUS_PillarTwo.pdf","1.投后管理指引.docx", "3.缴款通知及挂牌业务资金划转单.pdf", "4.绍兴市科技创业投资有限公司2022年度第一期理财直接融资工具注册要素表.pdf", "N. Hインタビュー _ KPMGコンサルティング採用サイト.pdf","Reflection Network Product Description Updated.txt"],
+			"aisearch": ["what is the country of kina？", "explain LEAVE MANAGEMENT POLICY, PROCESS & GUIDELINES", "どのような業務を主に担当していますか？","explain about AI – Large Language Models", "what is the issue with AUKUS Pillar Two", " 本公司制定投后管理业务指引的目的是什么？", "北金所账户的账号是多少？", "请简要介绍绍兴市科技创业投资有限公司的注册通知书和理财直接融资工具的基本信息", "explain Smart Firewall Benefits"  ],
+
+			"testDescription":"upload different files and ask queries related to that doc"
+		},   
+		{
+			"aiindex": ["AI Blog 5 18 2023.docx", "L7 Artificial Intelligence (AI) Data Specialist.xlsx", "Technology Allocation Form.odt", "2.华南地区国企基金.xlsx", "7.全量企业知识图谱赋能发现及监管国内优质企业.pptx"],
+			"aisearch": ["北金所账户的账号是多少？", "什么是付款通知书和挂牌业务资金划拨单", "Give Guidelines for Proper Care of the Laptop", "杭州新地数字工程系统有限公司的财务状况和募集金额是多少？", "请解释烯牛数据的数据加工流程以及如何应用于多种商业领域"],
+			"testDescription":"Upload ODF, Word, Excel and PPT files in multiple languages and test"
+		},
+		{
+			"aiunindex": ["3.缴款通知及挂牌业务资金划转单.pdf"],
+			"aiindex": ["3.缴款通知及挂牌业务资金划转单.pdf"],
+			"testDescription":"Delete file and test it should give no knowledge to the query"
+		},
+		{
+			"aiunindex": ["4.绍兴市科技创业投资有限公司2022年度第一期理财直接融资工具注册要素表.pdf"],
+			"aiindex": ["4.绍兴市科技创业投资有限公司2022年度第一期理财直接融资工具注册要素表.pdf"],
+			"aisearch": ["请简要介绍绍兴市科技创业投资有限公司的注册通知书和理财直接融资工具的基本信息。", "担保机构的全称是绍兴高新技术产业开发区迪荡新城投资发展有限公司局，其信用级别是多少？"],
+			"testDescription":"Delete file and upload it again test it should give answer to the query"	
+		},
+		{
+			"airename": ["3.缴款通知及挂牌业务资金划转单.pdf", "43.缴款通知及挂牌业务资金划转单.pdf"],
+			"aisearch": ["北金所账户的账号是多少？"],
+			"testDescription":"rename the file, and ask the queries" 
+		},
+		{
+			"aiindex": ["Technology Allocation.docx", "Technology Allocation.docx" ],
+			"aisearch": ["Guidelines for Proper Care of the Laptop", "explain employee laptop & accessories"],
+			"testDescription":"Re-uploaded the  the file , and ask the queries"
+		}
+	]
+}
