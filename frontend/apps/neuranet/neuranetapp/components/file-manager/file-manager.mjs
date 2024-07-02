@@ -424,7 +424,7 @@ async function editFileLoadData(element) {
       
       dialog(element).hideDialog(FMDIALOG_ID); screenFocusUnfocus(file_manager.getHostElement(element, true));
       const resp = await apiman.rest(API_OPERATEFILE, "POST", _addExtraInfo({path: selectedPath, op: "write", 
-         data: result.filecontents}, element), true);
+         data: result.filecontents, isDisabled: true}, element), true);
       if (!resp.result) _showErrordialog();
    }); else _showErrordialog();
 }

@@ -4,13 +4,14 @@
  * 
  * (C) 2020 TekMonks. All rights reserved.
  */
-const path = require("path");
 const utils = require(`${CONSTANTS.LIBDIR}/utils.js`);
 const XBIN_CONSTANTS = LOGINAPP_CONSTANTS.ENV.XBIN_CONSTANTS;
 const cms = require(`${XBIN_CONSTANTS.LIB_DIR}/cms.js`);
 const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
 const uploadfile = require(`${XBIN_CONSTANTS.API_DIR}/uploadfile.js`);
-const downloadfile = require(`${XBIN_CONSTANTS.API_DIR}/downloadfile.js`);
+
+const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
+const tika = require(`${NEURANET_CONSTANTS.PLUGINSDIR}/tika/tika.js`);
 
 exports.doService = async (jsonReq, _, headers) => {
 	if (!validateRequest(jsonReq)) {LOG.error("Validation failure."); return CONSTANTS.FALSE_RESULT;}
@@ -18,9 +19,11 @@ exports.doService = async (jsonReq, _, headers) => {
 	
 	LOG.debug("Got operatefile request for path: " + jsonReq.path);
 
+	if(jsonReq.op == "write" && jsonReq.isDisabled) { LOG.debug(`writefile request for path: ${jsonReq.path} is disabled`); return CONSTANTS.TRUE_RESULT; }
+	
 	try {
 		const result = {...CONSTANTS.TRUE_RESULT}, fullpath = await cms.getFullPath(headers, jsonReq.path, jsonReq.extraInfo);
-		if (jsonReq.op == "read") result.data = await downloadfile.readUTF8File(headers, jsonReq.path, jsonReq.extraInfo);	// it is a read operation
+		if (jsonReq.op == "read") { const data = await tika.getContent(fullpath, false); result.data = data.toString().trim(); }  // it is a read operation
 		else if (jsonReq.op == "write") {
 			await uploadfile.writeUTF8File(headers, jsonReq.path, Buffer.isBuffer(jsonReq.data) ? 
 				jsonReq.data : Buffer.from(jsonReq.data, "utf8"), jsonReq.extraInfo);	// it is a write operation
