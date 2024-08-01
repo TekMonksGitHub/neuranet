@@ -427,7 +427,7 @@ async function _getLangNormalizedWords(document, lang, db, autocorrect=false, fa
         if (word.trim() == "") return true; // emptry words are useless
         const dbHasStopWords = db._stopwords?.[lang] && db._stopwords[lang].length > 0;
         if (!dbHasStopWords) {   // auto learn stop words if possible
-            const dbDocCount = db.tfidfDocStore.doclength();
+            const dbDocCount = await db.tfidfDocStore.doclength();
             if (dbDocCount > MIN_STOP_WORD_IDENTIFICATION_LENGTH) {
                 if (!db._stopwords) db._stopwords = {}; db._stopwords[lang] = [];
                 for (const word of db.iindex.getAllWords())
