@@ -60,7 +60,7 @@ exports.ingest = async function(fileindexer) {
     const rootComment = `Text for: ${path.basename(fileindexer.cmspath)}`;
     const rootIndexerResultCMS = await fileindexer.addFileToCMSRepository(await fileindexer.getReadstream(), cmsGenTextFilePath, rootComment, true);  // save the extracted text as well
     const rootIndexerResultAI = await fileindexer.addFileToAI(); 
-    await fileindexer.end(); _informProgress(totalPregentSteps);
+    await fileindexer.flush(); _informProgress(totalPregentSteps);
 
     if (!rootIndexerResultCMS) LOG.error(`Pregen failed at adding original file for file ${fileindexer.cmspath}'s extracted text.`);
     if (!rootIndexerResultAI) LOG.error(`Pregen failed at adding original file to AI ${fileindexer.cmspath}.`);
@@ -87,7 +87,7 @@ exports.uningest = async function(fileindexer) {
     const aiappObject = await aiapp.getAIApp(fileindexer.id, fileindexer.org, fileindexer.aiappid), 
         genfilesDir = aiappObject.generated_files_path;    const cmsGenTextFilePath = `${path.dirname(fileindexer.cmspath)}/${genfilesDir}/${path.basename(fileindexer.cmspath)}.txt`;
     const rootIndexerResultCMS = await fileindexer.deleteFileFromCMSRepository(cmsGenTextFilePath, true);  // remove the extracted text as well
-    const rootIndexerResultAI = await fileindexer.removeFileFromAI(); await fileindexer.end();
+    const rootIndexerResultAI = await fileindexer.removeFileFromAI(); await fileindexer.flush();
     if (!rootIndexerResultCMS.result) LOG.error(`Pregen failed at removing original file ${fileindexer.cmspath}'s extracted text.`);
     if (!rootIndexerResultAI.result) LOG.error(`Pregen failed at removing original file (AI DB uningestion failure) ${fileindexer.cmspath}.`);
     else LOG.info(`Pregen succeeded at removing original file ${fileindexer.cmspath}.`);
@@ -96,7 +96,7 @@ exports.uningest = async function(fileindexer) {
 
 /**
  * Will rename the given file and rename the corresponding pregen (GARAGe) files for it.
- * @param {bject} fileindexer The file indexer object
+ * @param {object} fileindexer The file indexer object
  * @returns true on success or false on failure
  */
 exports.rename = async function(fileindexer) {
@@ -117,7 +117,7 @@ exports.rename = async function(fileindexer) {
     const rootIndexerResultCMS = await fileindexer.renameFileFromCMSRepository(cmsGenTextFilePath, cmsGenTextFilePathTo, true);  // rename the extracted text as well
     if (!rootIndexerResultCMS.result) LOG.error(`Pregen failed at renaming original file ${fileindexer.cmspath}'s extracted text.`);
     const rootIndexerResultAI = await fileindexer.renameFileToAI();
-    await fileindexer.end(); if (!rootIndexerResultAI.result) LOG.error(`Pregen failed at renaming original file (AI DB rename failure).`);
+    await fileindexer.flush(); if (!rootIndexerResultAI.result) LOG.error(`Pregen failed at renaming original file (AI DB rename failure).`);
     return rootIndexerResultAI.result;  // renaming original file to AI is the the only important thing
 }
 
