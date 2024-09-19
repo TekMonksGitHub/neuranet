@@ -6,7 +6,10 @@
  */
 
 const yaml = require("yaml");
+const fs = require('fs');
 const fspromises = require("fs").promises;
+const path = require('path');
+const archiver = require('archiver');
 const serverutils = require(`${CONSTANTS.LIBDIR}/utils.js`);
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const aiutils = require(`${NEURANET_CONSTANTS.LIBDIR}/aiutils.js`);
@@ -212,20 +215,114 @@ exports.initNewAIAppForOrg = async function(aiappid, label, id, org) {
 }
 
 /**
+ * Creates a directory at the specified path if it doesn't exist.
+ * 
+ * @param {string} dirPath - The path of the directory to create.
+ * @returns {Promise<void>} - Resolves if the directory is created successfully.
+ * @throws {Error} - Throws an error if directory creation fails.
+ */
+
+async function makeDirectory(dirPath) {
+    try {
+        await fspromises.mkdir(dirPath, { recursive: true });
+        LOG.info(`Directory ${dirPath} created successfully.`);
+    } catch (err) {
+        LOG.error(`Error creating directory ${dirPath}: ${err.message}`); 
+        throw err; 
+    }
+}
+
+
+/**
+ * Zips the contents of a folder into a .zip file.
+ * 
+ * @param {string} sourceFolderPath - The path of the folder to zip.
+ * @param {string} zipFilePath - The path where the zip file should be saved.
+ * @returns {Promise<void>} - Resolves when the folder is successfully zipped.
+ * @throws {Error} - Throws an error if zipping fails.
+ */
+
+async function zipFolder(sourceFolderPath, zipFilePath) {
+    return new Promise((resolve, reject) => {
+        const output = fs.createWriteStream(zipFilePath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+
+        output.on('close', () => {
+            LOG.info(`Folder successfully zipped into ${zipFilePath}`);
+            resolve();
+        });
+
+        archive.on('error', (err) => {
+            LOG.error(`Error while zipping folder: ${err.message}`);
+            reject(err);
+        });
+
+        archive.pipe(output);
+        archive.directory(sourceFolderPath, false);
+        archive.finalize();
+    });
+}
+
+
+/**
+ * Deletes a folder and its contents recursively.
+ * 
+ * @param {string} folderPath - The path of the folder to delete.
+ * @returns {Promise<void>} - Resolves when the folder is successfully deleted.
+ * @throws {Error} - Throws an error if folder deletion fails.
+ */
+
+async function deleteFolder(folderPath) {
+    try {
+        await fspromises.rm(folderPath, { recursive: true, force: true });
+        LOG.info(`Successfully deleted folder: ${folderPath}`);
+    } catch (err) {
+        LOG.error(`Error deleting folder ${folderPath}: ${err.message}`);
+        throw err;
+    }
+}
+
+
+
+/**
  * Deletes the given AI app for the given org.
  * @param {string} aiappid The AI app ID
  * @param {string} id The user ID
  * @param {string} org The org
  * @returns true on success or false on failure
  */
-exports.deleteAIAppForOrg = async function(aiappid, id, org) {    
+
+exports.deleteAIAppForOrg = async function(aiappid, id, org) {
+    aiappid = aiappid.toLowerCase();
+    org = org.toLowerCase();
+
     const newAppDir = exports.getAppDir(id, org, aiappid);
-    aiappid = aiappid.toLowerCase(); org = org.toLowerCase();
-    let result; try {result = await serverutils.rmrf(newAppDir);} catch (err) {
-        if (err.code  !== "ENOENT") {LOG.error(`Error deleting AI app folder due to ${err}`); result = false;} }
-    if (!result) {LOG.error(`Error deleting hosting folder for app ${aiappid} for org ${org}.`); return false;}
-    else return await dblayer.deleteAIAppforOrg(org, aiappid);
+    const archiveDirPath = `${NEURANET_CONSTANTS.DBDIR}/archive`;
+    const sourceFolderPath = `${NEURANET_CONSTANTS.DBDIR}/ai_db/deeplogictech/${aiappid}`;
+    const zipFilePath = path.join(archiveDirPath, `${aiappid}.zip`);
+
+    let result;
+    try {
+        await makeDirectory(archiveDirPath);
+        await zipFolder(sourceFolderPath, zipFilePath);
+        await deleteFolder(sourceFolderPath);
+        result = await serverutils.rmrf(newAppDir);
+    } catch (err) {
+        if (err.code !== "ENOENT") {
+            LOG.error(`Error deleting AI app folder due to ${err}`);
+            result = false;
+        }
+    }
+
+    if (!result) {
+        LOG.error(`Error deleting hosting folder for app ${aiappid} for org ${org}.`);
+        return false;
+    } else {
+        return await dblayer.deleteAIAppforOrg(org, aiappid);
+    }
 }
+
+
 
 /**
  * Publishes (but doesn't add) the given AI app for the given org.
@@ -233,7 +330,7 @@ exports.deleteAIAppForOrg = async function(aiappid, id, org) {
  * @param {string} org The org
  * @returns true on success or false on failure
  */
-exports.publishAIAppForOrg = async function(aiappid, org) {    
+exports.publishAIAppForOrg = async function(aiappid, org) {  
     aiappid = aiappid.toLowerCase(); org = org.toLowerCase();
     return await dblayer.addOrUpdateAIAppForOrg(org, aiappid, exports.AIAPP_STATUS.PUBLISHED);
 }
