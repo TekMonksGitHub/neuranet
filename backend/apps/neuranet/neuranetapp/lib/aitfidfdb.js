@@ -33,9 +33,9 @@ const memfs = require(`${CONSTANTS.LIBDIR}/memfs.js`);
 const serverutils = require(`${CONSTANTS.LIBDIR}/utils.js`);
 const conf = require(`${NEURANET_CONSTANTS.CONFDIR}/aidb.json`);
 const blackboard = require(`${CONSTANTS.LIBDIR}/blackboard.js`);
-const jpsegmenter = require(`${__dirname}/../3p/jpsegmenter.js`);
-const zhsegmenter = require(`${__dirname}/../3p/zhsegmenter.js`);
-const langdetector = require(`${__dirname}/../3p/langdetector.js`);
+const jpsegmenter = require(`${NEURANET_CONSTANTS.THIRDPARTYDIR}/jpsegmenter.js`);
+const zhsegmenter = require(`${NEURANET_CONSTANTS.THIRDPARTYDIR}/zhsegmenter.js`);
+const langdetector = require(`${NEURANET_CONSTANTS.THIRDPARTYDIR}/langdetector.js`);
 
 const VOCABULARY_FILE="vocabulary", IINDEX_FILE="iindex", METADATA_DOCID_KEY="docid.key", 
     METADATA_LANGID_KEY="langid.key", METADATA_DOCID_KEY_DEFAULT = "aidb_docid", METADATA_LANGID_KEY_DEFAULT = "aidb_langid", 
