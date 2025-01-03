@@ -8,6 +8,8 @@ const path = require("path");
 const mustache = require("mustache");
 const fspromises = require("fs").promises;
 const serverutils = require(`${CONSTANTS.LIBDIR}/utils.js`);
+const fs = require('fs');
+const yaml = require('js-yaml');
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 
 const DEBUG_RUN = NEURANET_CONSTANTS.CONF.debug_mode;
@@ -48,3 +50,33 @@ exports.getAIModel = async function(model_name, overrides) {
     const model = serverutils.clone(NEURANET_CONSTANTS.CONF.ai_models[model_name]);
     return await _overrideModel(model);
 }
+
+
+exports.getQuota = function (id, org) {
+    try {
+        const quotas = yaml.load(fs.readFileSync(`${CONSTANTS.ROOTDIR}/../apps/neuranet/aiapps/tekmonks/tkmaiapp/tkmaiapp.yaml`, 'utf8'));
+        if (quotas[org] && quotas[org][id]) {
+            LOG.debug(`Quota found for ID ${id} under org ${org}: ${quotas[org][id]}`);
+            return parseFloat(quotas[org][id]);
+        } else {
+            LOG.warn(`No specific quota found for ID ${id} under org ${org}.`);
+        }
+        if (quotas[org] && quotas[org].defaultQuota) {
+            LOG.debug(`Using default quota for org ${org}: ${quotas[org].defaultQuota}`);
+            return parseFloat(quotas[org].defaultQuota);
+        } else {
+            LOG.warn(`No default quota found for org ${org}.`);
+        }
+        if (quotas._global && quotas._global.defaultQuota) {
+            LOG.debug(`Using global default quota: ${quotas._global.defaultQuota}`);
+            return parseFloat(quotas._global.defaultQuota);
+        } else {
+            LOG.error(`No global default quota found.`);
+        }
+        LOG.warn(`Falling back to default quota.`);
+        return DEFAULT_QUOTA;
+    } catch (err) {
+        LOG.error(`Failed to load quotas from YAML: ${err.message}`);
+        return DEFAULT_QUOTA;
+    }
+};

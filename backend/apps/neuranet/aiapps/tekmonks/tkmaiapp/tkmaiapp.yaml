@@ -287,3 +287,16 @@ global_models:
 
 modules: 
   llm_history_chat: llm_history_chat.js
+
+
+
+# Global fallback for all users and organizations
+_global:
+  defaultQuota: 0.6
+
+# Organization-specific quotas
+_org_neuranet_defaultorg_:
+  defaultQuota: 0.6
+
+tekmonks:
+  defaultQuota: 0.6
