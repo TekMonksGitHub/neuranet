@@ -291,7 +291,7 @@ modules:
 
 # Organization-specific quotas
 _org_neuranet_defaultorg_:
-  defaultQuota: 0.6
+  defaultQuota: 0.6 
 
 tekmonks:
   defaultQuota: 0.6

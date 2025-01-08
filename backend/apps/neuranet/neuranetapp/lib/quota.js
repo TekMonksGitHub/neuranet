@@ -6,10 +6,12 @@
 
 const NEURANET_CONSTANTS = LOGINAPP_CONSTANTS.ENV.NEURANETAPP_CONSTANTS;
 const dblayer = require(`${NEURANET_CONSTANTS.LIBDIR}/dblayer.js`);
+const aiapp = require(`${NEURANET_CONSTANTS.LIBDIR}/aiapp.js`);
+
 
 exports.checkQuota = async function(id, org) {
     LOG.info(`Quota check called for ID ${id} from org ${org}.`);
-    let allowedQuota = await dblayer.getQuota(id, org);
+    let allowedQuota = await aiapp.getQuota(id, org);
     if (allowedQuota == -1) {LOG.warn(`No quota found for ID ${id}, not checking or enforcing.`); return true;}
     LOG.debug(`Found that ID ${id} from org ${org} is allowed a quota price equal to ${allowedQuota}.`);
 

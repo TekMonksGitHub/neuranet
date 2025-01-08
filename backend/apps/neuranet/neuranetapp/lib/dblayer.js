@@ -53,25 +53,6 @@ exports.getAIModelUsage = async (id, startTimestamp, endTimestamp, model) => {
 	} else try { return parseFloat(usage[0].totaluse); } catch (err) {LOG.error(`Error parsing usage ${usage[0].totaluse} for ID ${id}, model ${model} between the timestamps ${startTimestamp} and ${endTimestamp}, returning 0.`); return 0;}
 } 
 
-exports.getQuota = async (id, org) => {
-	const _parseQuota = quota => { try { return parseFloat(quota[0].quota); } catch (err) { LOG.error(
-		`Error parsing quota ${quota[0].quota} for ID ${id}.`); return -1; } }
-	
-	let quota; 
-	
-	quota = await db.getQuery("SELECT quota FROM quotas WHERE id=? AND org=? COLLATE NOCASE", [id, org]);
-	if ((!quota) || (!quota.length)) LOG.warn(`No quota found for id ${id} under org ${org}.`); 
-
-	quota = await db.getQuery("SELECT quota FROM quotas WHERE id=? AND org=? COLLATE NOCASE", 
-		[NEURANET_CONSTANTS.DEFAULT_ID, org]);
-	if ((!quota) || (!quota.length)) LOG.warn(`No default quota found for org ${org}.`); 
-	else {LOG.debug(`Using default quota of ${quota[0].quota} for org ${org}.`); return _parseQuota(quota);}
-
-	quota = await db.getQuery("SELECT quota FROM quotas WHERE id=? AND org=? COLLATE NOCASE", 
-		[NEURANET_CONSTANTS.DEFAULT_ID, NEURANET_CONSTANTS.DEFAULT_ORG]);
-	if ((!quota) || (!quota.length)) {LOG.error(`No default quota found at all.`); return -1;}
-	else {LOG.debug(`Using default quota of ${quota[0].quota} for ${id}.`); return _parseQuota(quota);}
-}
 
 exports.getOrgSettings = async function(org) {
 	const query = "SELECT settings FROM orgsettings WHERE org=? COLLATE NOCASE";

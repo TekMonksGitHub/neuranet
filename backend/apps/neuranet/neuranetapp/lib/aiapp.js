@@ -272,3 +272,40 @@ exports.unpublishAIAppForOrg = async function(aiappid, org) {
  * @returns AI application file.
  */
 exports.getAppFile = (id, org, aiappid) => `${exports.getAppDir(id, org, aiappid)}/${aiappid}.yaml`;
+
+
+exports.getQuota = async function (id, org) {
+    try {
+        const jsonData = await fspromises.readFile(`${CONSTANTS.ROOTDIR}/../apps/neuranet/neuranetapp/conf/neuranet.json`, 'utf8');
+        const jsonConfig = JSON.parse(jsonData);
+        const globalQuotas = jsonConfig.quota_config;
+        if (!globalQuotas || !globalQuotas._global) {
+            LOG.error(`"_global" quota not found`);
+        }
+        const yamlData = await fspromises.readFile(`${CONSTANTS.ROOTDIR}/../apps/neuranet/aiapps/tekmonks/tkmaiapp/tkmaiapp.yaml`, 'utf8');
+        const yamlConfig = yaml.parse(yamlData);
+        if (yamlConfig[org] && yamlConfig[org][id]) {
+            LOG.debug(`Quota found for ID ${id} under org ${org} in YAML: ${yamlConfig[org][id]}`);
+            return parseFloat(yamlConfig[org][id]);
+        } else {
+            LOG.warn(`No specific quota found for ID ${id} under org ${org} in YAML.`);
+        }
+        if (yamlConfig[org] && yamlConfig[org].defaultQuota) {
+            LOG.debug(`Using default quota for org ${org} in YAML: ${yamlConfig[org].defaultQuota}`);
+            return parseFloat(yamlConfig[org].defaultQuota);
+        } else {
+            LOG.warn(`No default quota found for org ${org} in YAML.`);
+        }
+        if (globalQuotas && globalQuotas._global && globalQuotas._global.defaultQuota) {
+            LOG.debug(`Using global default quota from JSON: ${globalQuotas._global.defaultQuota}`);
+            return parseFloat(globalQuotas._global.defaultQuota);
+        } else {
+            LOG.error(`No global default quota found in JSON.`);
+        }
+        LOG.warn(`Falling back to default quota.`);
+        return DEFAULT_QUOTA;
+    } catch (err) {
+        LOG.error(`Failed to load quotas: ${err.message}`);
+        return DEFAULT_QUOTA;
+    }
+};

@@ -69,5 +69,11 @@
         "token_approximation_uplift": 1.10,
         "price_per_unit": "0.0000001"
     }
-}
+},
+
+"quota_config": {
+    "_global": {
+      "defaultQuota": 0.6
+    }
+  }
 }
