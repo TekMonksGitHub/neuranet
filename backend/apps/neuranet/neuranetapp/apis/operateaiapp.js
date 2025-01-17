@@ -25,15 +25,21 @@ const OPS = Object.freeze({NEW: "new", DELETE: "delete", PUBLISH: "publish", UNP
 
 exports.doService = async jsonReq => {
     if (!validateRequest(jsonReq)) {LOG.error("Validation failure."); return CONSTANTS.FALSE_RESULT};
-    const op = jsonReq.op.toLowerCase(), aiappid = jsonReq.aiappid.toLowerCase(), org = jsonReq.org.toLowerCase(), 
-        aiapplabel = jsonReq.aiapplabel || NEURANET_CONSTANTS.DEFAULT_ORG_DEFAULT_AIAPP_LABEL, id = jsonReq.id;
+    const id = jsonReq.id, op = jsonReq.op.toLowerCase(), 
+    org = jsonReq.org.toLowerCase(), aiappid = jsonReq.aiappid.toLowerCase(), 
+    aiapplabel = jsonReq.aiapplabel || NEURANET_CONSTANTS.DEFAULT_ORG_DEFAULT_AIAPP_LABEL;
     
-    if (op == OPS.NEW) return {result: await aiapp.initNewAIAppForOrg(aiappid, aiapplabel, id, org)};
+    if (op == OPS.NEW) return {result: await aiapp.initNewAIAppForOrg(_generateNewAiappID(aiappid, org), aiapplabel, id, org)};
     else if (op == OPS.DELETE) return {result: await aiapp.deleteAIAppForOrg(aiappid, id, org)};
     else if (op == OPS.PUBLISH) return {result: await aiapp.publishAIAppForOrg(aiappid, org)};
     else if (op == OPS.UNPUBLISH) return {result: await aiapp.unpublishAIAppForOrg(aiappid, org)};
     else {LOG.error(`Unknown op ${op} for AI app ${aiappid}`); return CONSTANTS.FALSE_RESULT;}
 }
+
+const _generateNewAiappID = (aiappname, orgname) => 
+    `${_modifyStringForAiappID(orgname)}.${_modifyStringForAiappID(aiappname)}`;
+
+const _modifyStringForAiappID = (string) => string.toLowerCase().trim().replaceAll(" ", "_");
 
 exports.OPS = OPS;
 
