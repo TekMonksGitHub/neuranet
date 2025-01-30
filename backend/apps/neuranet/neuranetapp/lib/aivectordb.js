@@ -67,7 +67,7 @@ const conf = require(`${NEURANET_CONSTANTS.CONFDIR}/aidb.json`);
 
 const dbs = {}, DB_INDEX_NAME = "dbindex", METADATA_DOCID_KEY="aidbdocidkey", METADATA_DOCID_KEY_DEFAULT="aidb_docid",
     VECTORDB_FUNCTION_CALL_TOPIC = "vectordb.functioncall", workers = [],
-    DB_INDEX_OBJECT_TEMPLATE = {index:{}, modifiedts:Date.now(), savedts: 0, multithreaded: false, memused: 0, path: ""};
+    DB_INDEX_OBJECT_TEMPLATE = {index:{}, modifiedts:0, savedts: 0, multithreaded: false, memused: 0, path: ""};
 
 let dbs_worker, workers_initialized = false, blackboard_initialized = false;
 
@@ -106,9 +106,8 @@ exports.initAsync = async (db_path_in, metadata_docid_key, multithreaded) => {
         dbs[_get_db_index(db_path_in)][METADATA_DOCID_KEY] = metadata_docid_key;
         return;
     }
-
-    try {if (!dbs[_get_db_index(db_path_in)]) await exports.read_db(db_path_in, metadata_docid_key, multithreaded);} catch (err) { // read if not in memory already
-        _log_error("Vector DB index does not exist, or read error. Initializing to an empty DB", db_path_in, err); 
+    
+    if (!dbs[_get_db_index(db_path_in)]) {  // read if not in memory already 
         dbs[_get_db_index(db_path_in)] = _createEmptyDB(db_path_in, multithreaded); // init to an empty db
         dbs[_get_db_index(db_path_in)][METADATA_DOCID_KEY] = metadata_docid_key;
     }
@@ -122,16 +121,23 @@ exports.initAsync = async (db_path_in, metadata_docid_key, multithreaded) => {
  * @throws Exception on errors 
  */
 exports.read_db = async (db_path_in, metadata_docid_key, multithreaded) => {
-    dbToFill = _createEmptyDB(db_path_in, multithreaded);
-    dbToFill[METADATA_DOCID_KEY] = metadata_docid_key;
-    dbs[_get_db_index(db_path_in)] = dbToFill;
-
+    if(!dbs[_get_db_index(db_path_in)]) {
+        dbToFill = _createEmptyDB(db_path_in, multithreaded);
+        dbToFill[METADATA_DOCID_KEY] = metadata_docid_key;
+        dbs[_get_db_index(db_path_in)] = dbToFill;
+    }
+    dbToFill = dbs[_get_db_index(db_path_in)];
+    
     const indexFilesForDB = await _get_db_index_files(db_path_in); for (const indexFile of indexFilesForDB) {
-        const ndjson_index = await memfs.readFile(indexFile, "utf8");
+        if(dbToFill.index[_get_hash_from_index_file(indexFile)]) continue; // Do not read if already in memory
+        const ndjson_index = fs.readFileSync(indexFile, "utf8");
         for (const vector of ndjson_index.split("\n")) { 
             if (vector.trim() == "") continue;  // ignore blank lines
-            const vectorObject = JSON.parse(vector); 
-            await _setDBVectorObject(dbToFill, vectorObject);
+            const vectorObject = JSON.parse(vector);
+            dbToFill.index[vectorObject.hash] = vectorObject; 
+            dbToFill.memused += serverutils.objectMemSize(vectorObject);
+            dbToFill.modifiedts = Date.now();
+            _log_info(`Data added, now the memory used for vector database is ${dbToFill.memused} bytes.`, dbToFill.path);
         }
         await _update_db_for_worker_threads();
     }
@@ -189,11 +195,14 @@ exports.create = exports.add = async (vector, metadata, text, embedding_generato
     if (!metadata[dbToUse[METADATA_DOCID_KEY]]) throw new Error("Missing document ID in metadata.");
 
     const vectorHash = _get_vector_hash(vector, metadata, dbToUse); 
-    if (!_getDBVectorObject(dbToUse, vectorHash)) {  
-        await _setDBVectorObject(dbToUse, {vector, hash: vectorHash, metadata, length: _getVectorLength(vector)}, true);
-        
-        try {await memfs.writeFile(_get_db_index_text_file(dbToUse, vectorHash), text||"", "utf8");}
-        catch (err) {
+    if (!_getVectorObjectFromFile(dbToUse, vectorHash)) {  
+        try {
+            const vectorObj = {vector, hash: vectorHash, metadata, length: _getVectorLength(vector)};
+            fs.writeFileSync(_get_db_index_file(dbToUse, vectorHash), JSON.stringify(vectorObj), "utf8");
+            fs.writeFileSync(_get_db_index_text_file(dbToUse, vectorHash), text, "utf8");
+            if(dbToUse.index[vectorHash]) dbToUse.index[vectorHash].metadata = metadata; // update metadata if in memory
+            dbToUse.savedts = Date.now();
+        } catch (err) {
             _deleteDBVectorObject(db_path, vectorHash);
             _log_error(`Vector DB text file ${_get_db_index_text_file(dbToUse, vectorHash)} could not be saved`, db_path, err);
             return false;
@@ -217,6 +226,7 @@ exports.create = exports.add = async (vector, metadata, text, embedding_generato
 exports.read = async (vector, metadata, notext, db_path) => {
     const dbToUse = dbs[_get_db_index(db_path)], hash = _get_vector_hash(vector, metadata, dbToUse);
     const vectorObject = _getDBVectorObject(dbToUse, hash);
+    if (!vectorObject) vectorObject = _getVectorObjectFromFile(dbToUse, hash);    // not found in memory
     if (!vectorObject) return null;    // not found
 
     let text; 
@@ -280,7 +290,12 @@ exports.delete = async (vector, metadata, db_path) => {
  */
 exports.query = async function(vectorToFindSimilarTo, topK, min_distance, metadata_filter_function, notext, db_path, 
         filter_metadata_last, benchmarkIterations, _forceSingleNode) {
-    const dbToUse = serverutils.clone(dbs[_get_db_index(db_path)]); _log_info(`Searching ${Object.values(dbToUse.index).length} vectors.`, db_path);
+    let dbToUse = serverutils.clone(dbs[_get_db_index(db_path)]);
+    if (dbToUse.modifiedts <= dbToUse.savedts) { // found recent db changes
+        await exports.read_db(db_path, dbToUse[METADATA_DOCID_KEY], dbToUse.multithreaded); // load updated vectors in memory 
+        dbToUse = serverutils.clone(dbs[_get_db_index(db_path)]); // reload db after inmemory vector load
+    } _log_info(`Searching ${Object.values(dbToUse.index).length} vectors.`, db_path);
+
     const _searchSimilarities = async _ => {
         const similaritiesOtherReplicas = dbToUse.distributed && (!_forceSingleNode) ? 
             await _getDistributedSimilarities([vectorToFindSimilarTo, topK, min_distance, metadata_filter_function, 
@@ -461,26 +476,25 @@ exports.free = async db_path => {await flush_db(path); delete dbs[_get_db_index(
  */
 exports.get_vectordb = async function(db_path, embedding_generator, metadata_docid_key=METADATA_DOCID_KEY_DEFAULT, isMultithreaded) {
     await exports.initAsync(db_path, metadata_docid_key, isMultithreaded); 
-    let save_timer; if (conf.autosave) save_timer = setInterval(_=>exports.save_db(db_path), conf.autosave_frequency);
     return {
-        create: async (vector, metadata, text) => exports.create(vector, metadata, text, embedding_generator, db_path),
-        ingest: async (metadata, document, chunk_size, split_separators, overlap) => exports.ingest(metadata, document, 
+        create: async (vector, metadata, text) => await exports.create(vector, metadata, text, embedding_generator, db_path),
+        ingest: async (metadata, document, chunk_size, split_separators, overlap) => await exports.ingest(metadata, document, 
             chunk_size, split_separators, overlap, embedding_generator, db_path),
         ingeststream: async(metadata, stream, encoding="utf8", chunk_size, split_separators, overlap) => 
             exports.ingeststream(metadata, stream, encoding, chunk_size, split_separators, overlap, 
                 embedding_generator, db_path),
-        read: async (vector, metadata, notext) => exports.read(vector, metadata, notext, db_path),
-        update: async (vector, oldmetadata, newmetadata, text) => exports.update(vector, oldmetadata, newmetadata, text, embedding_generator, db_path),
-        delete: async (vector, metadata) =>  exports.delete(vector, metadata, db_path),    
-        uningest: async (vectors, metadata) => exports.uningest(vectors, metadata, db_path),
+        read: async (vector, metadata, notext) => await exports.read(vector, metadata, notext, db_path),
+        update: async (vector, oldmetadata, newmetadata, text) => await exports.update(vector, oldmetadata, newmetadata, text, embedding_generator, db_path),
+        delete: async (vector, metadata) => await exports.delete(vector, metadata, db_path),    
+        uningest: async (vectors, metadata) => await exports.uningest(vectors, metadata, db_path),
         query: async (vectorToFindSimilarTo, topK, min_distance, metadata_filter_function, notext, filter_metadata_last, 
-                benchmarkIterations) => exports.query(
+                benchmarkIterations) => await exports.query(
             vectorToFindSimilarTo, topK, min_distance, metadata_filter_function, notext, db_path, filter_metadata_last, 
             benchmarkIterations),
-        flush_db: async _ => exports.save_db(db_path, true),
+        flush_db: async _ => _,
         get_path: _ => db_path, 
         get_embedding_generator: _ => embedding_generator,
-	    sort: vectorResults => vectorResults.sort((a,b) => b.similarity - a.similarity),
+        sort: vectorResults => vectorResults.sort((a,b) => b.similarity - a.similarity),
         unload: async _ => {if (save_timer) clearInterval(save_timer); await exports.free(db_path);}
     }
 }
@@ -580,8 +594,17 @@ const _get_db_index_files = async db_path => {
     return indexfiles;
 }
 
-const _get_db_index_text_file = (db, hash) => 
-    path.resolve(`${db.path}/text_${hash}`);
+const _get_db_index_text_file = (db, hash) => path.resolve(`${db.path}/text_${hash}`);
+
+const _get_db_index_file = (db, hash) => path.resolve(`${db.path}/${DB_INDEX_NAME}_${hash}`);
+
+const _get_hash_from_index_file = (indexfile) => indexfile.split(`${DB_INDEX_NAME}_`)[1];
+
+const _getVectorObjectFromFile = (db, hash) => { 
+    const vectorFilePath = _get_db_index_file(db, hash);
+    if(!fs.existsSync(vectorFilePath)) return false;
+    return JSON.parse(fs.readFileSync(vectorFilePath));
+};
 
 const _deleteAllCreatedVectors = async (vectors, metadata, db_path) => {for (const vector of vectors) await exports.delete(vector, metadata, db_path);}
 
@@ -596,22 +619,10 @@ async function _getIndexFileForVector(db, hash, forWriting) {
     return indexFile;
 }
 
-async function _setDBVectorObject(dbToFill, vectorObject, isBeingCreated=false) {
-
-    const indexFileThisVector = await _getIndexFileForVector(dbToFill, vectorObject.hash, isBeingCreated);
-    if (isBeingCreated) {
-        if (isBeingCreated) await memfs.appendFile(indexFileThisVector, JSON.stringify(vectorObject)+"\n", "utf8");
-        dbToFill.modifiedts = Date.now();
-    }
-
-    dbToFill.index[vectorObject.hash] = vectorObject; dbToFill.memused += serverutils.objectMemSize(vectorObject);
-
-    _log_info(`Data added, now the memory used for vector database is ${dbToFill.memused} bytes.`, dbToFill.path);
-}
-
 async function _deleteDBVectorObject(db_path, hash, publish=true) {
     const dbToUse = dbs[_get_db_index(db_path)];
-    if (!dbToUse.index[hash]) { 
+    const vectorFilePath = _get_db_index_file(dbToUse, hash);
+    if (!fs.existsSync(vectorFilePath)) { 
         if (publish) {  // we do not have this vector, maybe someone else does, just broadcast it
             const bboptions = {}; bboptions[blackboard.EXTERNAL_ONLY] = true;
             const msg = {dbinitparams: _createDBInitParams(dbToUse), function_params: [db_path, hash, false], 
@@ -622,11 +633,10 @@ async function _deleteDBVectorObject(db_path, hash, publish=true) {
     } 
 
     delete dbToUse.index[hash];
-    dbToUse.modifiedts = Date.now();
-    const indexFileThisVector = await _getIndexFileForVector(dbToUse, hash, true);
-    const textFileThisVector = _get_db_index_text_file(dbToUse, hash);
-
-    await memfs.unlinkIfExists(indexFileThisVector); await memfs.unlinkIfExists(textFileThisVector);
+    if(fs.existsSync(vectorFilePath)) fs.unlinkSync(vectorFilePath);
+    const textFilePath = _get_db_index_text_file(dbToUse, hash);
+    if(fs.existsSync(textFilePath)) fs.unlinkSync(textFilePath);
+    dbToUse.savedts = Date.now();
     return true;    // found locally
 }
 
@@ -663,7 +673,7 @@ async function _getDistributedSimilarities(query_params) {
         function_name: "query", is_function_private: false, send_reply: true };
     const replies = await _getDistributedResultFromFunction(msg);
     if (replies.incomplete) _log_warning(`Received incomplete replies for the query. Results not perfect.`, dbToUse.path);
-    const similarities = []; for (const replyObject of replies||[]) if (replyObject.reply) similarities.concat(replyObject.reply);
+    const similarities = []; for (const replyObject of replies||[]) if (replyObject.reply) similarities.push(...(replyObject.reply));
     return similarities;
 }
 
