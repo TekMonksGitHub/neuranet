@@ -60,7 +60,7 @@ const dbs = {}, VECTOR_INDEX_NAME = "vector", TEXT_INDEX_NAME = "text", METADATA
     VECTORDB_FUNCTION_CALL_TOPIC = "vectordb.functioncall", MAX_LOG_NON_VERBOSE_TRUNCATE = 250, 
     DB_OBJECT_TEMPLATE = {path: "", distributed: conf.distributed},
     EMPTY_VECTOR_OBJECT = {vector:[], hash: undefined, length: 0}, 
-    EMPTY_METADATA_OBJECT = {vector_objects: [], metadata: undefined}, TEMP_MEMORY = {};
+    EMPTY_METADATA_OBJECT = {vector_hashes: [], metadata: undefined}, TEMP_MEMORY = {};
 
 let blackboard_initialized = false;
 if (!blackboard_initialized) {_initBlackboardHooks(); blackboard_initialized = true;}
@@ -73,14 +73,14 @@ if (!blackboard_initialized) {_initBlackboardHooks(); blackboard_initialized = t
  */
 exports.initAsync = async (db_path_in, metadata_docid_key) => {
     if (!blackboard_initialized) throw ("TF.IDF blackboard hooks not initialized, severe error!");
-
-    dbs[_get_db_hash(db_path_in)] = {...(serverutils.clone(DB_OBJECT_TEMPLATE)), path: db_path_in};
-    dbs[_get_db_hash(db_path_in)][METADATA_DOCID_KEY_PROPERTY_NAME] = metadata_docid_key;
-
+    
     try {await memfs.access(db_path_in, fs.constants.R_OK)} catch (err) {
         _log_error("Vector DB path folder does not exist. Initializing to an empty DB", db_path_in, err); 
         await memfs.mkdir(db_path_in, {recursive:true});
         return;
+    } if(!dbs[_get_db_hash(db_path_in)]) {
+        dbs[_get_db_hash(db_path_in)] = {...(serverutils.clone(DB_OBJECT_TEMPLATE)), path: db_path_in};
+        dbs[_get_db_hash(db_path_in)][METADATA_DOCID_KEY_PROPERTY_NAME] = metadata_docid_key;
     }
 }
 
@@ -137,12 +137,12 @@ exports.create = exports.add = async (vector, metadata, text, embedding_generato
         if (!TEMP_MEMORY[tempMemHash].mdObject) TEMP_MEMORY[tempMemHash].mdObject = mdobjectTemp; // this sets the unique object for all awaits reconciling them
     }
     const mdobject = TEMP_MEMORY[tempMemHash].mdObject;    // now everyone is using the same object for the same metadata
-    if ((mdobject.vector_objects.indexOf(vectorhash) == -1) && (!_isDuplicateRequest(dbToUse, metadata, text))) {          
+    if ((mdobject.vector_hashes.indexOf(vectorhash) == -1) && (!_isDuplicateRequest(dbToUse, metadata, text))) {          
         const vectorObject = serverutils.clone(EMPTY_VECTOR_OBJECT); vectorObject.vector = serverutils.clone(vector); 
         vectorObject.hash = vectorhash; vectorObject.length = _getVectorLength(vector);
         const vectorfilePath = _getFilePathForVector(dbToUse, vectorObject.hash);
         const mdfilePath = _getFilePathForMetadata(dbToUse, metadata);
-        mdobject.vector_objects.push(vectorObject.hash);
+        mdobject.vector_hashes.push(vectorObject.hash);
         try {
             if (!dontserializeindex) TEMP_MEMORY[tempMemHash].files.push({path: mdfilePath, data: JSON.stringify(mdobject), encoding: "utf8"});
             TEMP_MEMORY[tempMemHash].files.push({path: vectorfilePath, data: JSON.stringify(vectorObject), encoding: "utf8"});
@@ -180,7 +180,7 @@ exports.read = async (vector, metadata, notext, db_path) => {
         return null;
     }
     
-    return {vector: vectorArray, text, hash: vectorHash, metadata: metadataJSON[metadataHash].metadata, length: vectorLength};
+    return {...vectorObject, text, metadata};
 }
 
 /**
@@ -196,25 +196,26 @@ exports.update = async (oldmetadata, newmetadata, db_path) => {
         metadataObjectNew = await _readMetadataObject(dbToUse, newmetadata, true);
     if (!metadataObjectOld) throw new Error("Metadata to update from not found");
     if (!newmetadata) throw new Error("Metadata to update to not created");
-    metadataObjectNew.vector_objects = metadataObjectOld.vector_objects;
-    const mdindexfileNew = _getFilePathForMetadata(newmetadata), mdindexfileOld = _getFilePathForMetadata(oldmetadata);
+    metadataObjectNew.vector_hashes = metadataObjectOld.vector_hashes;
+    const mdindexfileNew = _getFilePathForMetadata(dbToUse, newmetadata);
+    const mdindexfileOld = _getFilePathForMetadata(dbToUse, oldmetadata);
     await memfs.writeFile(mdindexfileNew, JSON.stringify(mdobject)); memfs.rm(mdindexfileOld);
 }
 
 /**
  * Deletes the given vector from the DB.
- * @param {array} vector The vector to update
+ * @param {array} vectorHash The vectorHash to delete
  * @param {string} db_path The DB path where this DB is stored. Must be a folder.
  * @throws Exception on errors 
  */
-exports.delete = async (vector, metadata, db_path) => {
-    const dbToUse = dbs[_get_db_hash(db_path)], vectorhash = _get_vector_hash(vector, metadata, dbToUse); 
+exports.delete = async (vectorHash, metadata, db_path) => {
+    const dbToUse = dbs[_get_db_hash(db_path)];
 
     try {
-        await _deleteVectorObject(db_path, vectorhash, metadata); 
+        await _deleteVectorObject(dbToUse, vectorHash, metadata); 
         return true;
     } catch (err) {
-        _log_error(`Vector or the associated text file ${_getTextfilePathForVector(dbToUse, vectorhash)} could not be deleted`, db_path, err);
+        _log_error(`Vector or the associated text file ${_getTextfilePathForVector(dbToUse, vectorHash)} could not be deleted`, db_path, err);
         return false;
     }
 }
@@ -271,11 +272,11 @@ exports.query = async function(vectorToFindSimilarTo, topK, min_distance, metada
  * @param {string} db_path The DB path where this DB is stored. Must be a folder.
  */
 exports.uningest = async (metadata, db_path) => { 
-    const metadataToDelete = await _readMetadataObject(metadata);
+    const metadataToDelete = await _readMetadataObject(dbs[_get_db_hash(db_path)], metadata);
     if (!metadataToDelete) return;  // already doesn't exist, treat as success
 
-    const vectorsToDelete = metadataToDelete.vector_objects;
-    for (const vector of vectorsToDelete) await exports.delete(vector, metadata, db_path); 
+    const vectorHashesToDelete = metadataToDelete.vector_hashes;
+    for (const vectorHash of vectorHashesToDelete) await exports.delete(vectorHash, metadata, db_path); 
 }
 
 /**
@@ -372,7 +373,7 @@ exports.get_vectordb = async function(db_path, embedding_generator, metadata_doc
                 embedding_generator, db_path),
         read: async (vector, metadata, notext) => exports.read(vector, metadata, notext, db_path),
         update: async (oldmetadata, newmetadata) => exports.update(oldmetadata, newmetadata, db_path),
-        delete: async (vector, metadata) =>  exports.delete(vector, metadata, db_path),    
+        delete: async (vector, metadata) => exports.delete(_get_vector_hash(vector), metadata, db_path),    
         uningest: async (metadata) => exports.uningest(metadata, db_path),
         query: async (vectorToFindSimilarTo, topK, min_distance, metadata_filter_function_or_metadata, notext) => exports.query(
             vectorToFindSimilarTo, topK, min_distance, metadata_filter_function_or_metadata, notext, db_path),
@@ -404,7 +405,7 @@ async function _search_singlethreaded(dbToUse, vectorToFindSimilarTo, metadata_f
 
     const similarities = [], lengthOfVectorToFindSimilarTo = vectorToFindSimilarTo?
         _getVectorLength(vectorToFindSimilarTo):undefined;
-    for (const metadata of metadatas_to_search) for (const vectorHash of metadata.vector_objects) {
+    for (const metadata of metadatas_to_search) for (const vectorHash of metadata.vector_hashes) {
         const entryToCompareTo = await _readVectorObject(dbToUse, vectorHash);
         similarities.push({   // calculate cosine similarities
             vector: entryToCompareTo.vector, vectorhash: vectorHash,
@@ -415,13 +416,12 @@ async function _search_singlethreaded(dbToUse, vectorToFindSimilarTo, metadata_f
     return similarities;
 }
 
-async function _deleteVectorObject(db_path, vectorhash, metadata, publish) {
-    const dbToUse = dbs[_get_db_hash(db_path)];
+async function _deleteVectorObject(dbToUse, vectorhash, metadata, publish) {
     const filepathThisVector = _getFilePathForVector(dbToUse, vectorhash);
 
     if (!(await _checkFileAccess(filepathThisVector))) { 
         if (publish) {  // we do not have this vector, maybe someone else does, just broadcast it
-            _getDistributedResultFromFunction(dbToUse, "_deleteVectorObject", [db_path, vectorhash, metadata, false], true, false);
+            _getDistributedResultFromFunction(dbToUse, "_deleteVectorObject", [dbToUse, vectorhash, metadata, false], true, false);
             return;   // not found locally
         } else return; // we already don't have this, so deletion is "sort of" successful
     } 
@@ -434,8 +434,8 @@ async function _deleteVectorObject(db_path, vectorhash, metadata, publish) {
 
     try {
         await memfs.unlinkIfExists(filepathThisVector); await memfs.unlinkIfExists(textFilepathThisVector);
-        if (mdobject && mdobject.vector_objects.indexOf(vectorhash) != -1) mdobject.vector_objects.splice(mdobject.vector_objects.indexOf(vectorhash), 1);
-        if (mdobject && mdobject.vector_objects.length) await memfs.writeFile(mdindexFile, JSON.stringify(mdobject)); else memfs.unlinkIfExists(mdindexFile);
+        if (mdobject && mdobject.vector_hashes.indexOf(vectorhash) != -1) mdobject.vector_hashes.splice(mdobject.vector_hashes.indexOf(vectorhash), 1);
+        if (mdobject && mdobject.vector_hashes.length) await memfs.writeFile(mdindexFile, JSON.stringify(mdobject)); else memfs.unlinkIfExists(mdindexFile);
     } catch (err) {
         _log_error(`Vector or its associated text file could not be deleted`, db_path, err);
     }
