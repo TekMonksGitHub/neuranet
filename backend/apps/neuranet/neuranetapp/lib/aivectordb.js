@@ -73,14 +73,16 @@ if (!blackboard_initialized) {_initBlackboardHooks(); blackboard_initialized = t
  */
 exports.initAsync = async (db_path_in, metadata_docid_key) => {
     if (!blackboard_initialized) throw ("TF.IDF blackboard hooks not initialized, severe error!");
-
-    dbs[_get_db_hash(db_path_in)] = {...(serverutils.clone(DB_OBJECT_TEMPLATE)), path: db_path_in};
-    dbs[_get_db_hash(db_path_in)][METADATA_DOCID_KEY_PROPERTY_NAME] = metadata_docid_key;
-
+    
     try {await memfs.access(db_path_in, fs.constants.R_OK)} catch (err) {
         _log_error("Vector DB path folder does not exist. Initializing to an empty DB", db_path_in, err); 
         await memfs.mkdir(db_path_in, {recursive:true});
         return;
+    } 
+    
+    if(!dbs[_get_db_hash(db_path_in)]) { // if not already initialized
+        dbs[_get_db_hash(db_path_in)] = {...(serverutils.clone(DB_OBJECT_TEMPLATE)), path: db_path_in};
+        dbs[_get_db_hash(db_path_in)][METADATA_DOCID_KEY_PROPERTY_NAME] = metadata_docid_key;
     }
 }
 
@@ -203,18 +205,18 @@ exports.update = async (oldmetadata, newmetadata, db_path) => {
 
 /**
  * Deletes the given vector from the DB.
- * @param {array} vector The vector to update
+ * @param {array} vectorHash The vectorHash to delete
  * @param {string} db_path The DB path where this DB is stored. Must be a folder.
  * @throws Exception on errors 
  */
-exports.delete = async (vector, metadata, db_path) => {
-    const dbToUse = dbs[_get_db_hash(db_path)], vectorhash = _get_vector_hash(vector, metadata, dbToUse); 
+exports.delete = async (vectorHash, metadata, db_path) => {
+    const dbToUse = dbs[_get_db_hash(db_path)];
 
     try {
-        await _deleteVectorObject(db_path, vectorhash, metadata); 
+        await _deleteVectorObject(db_path, vectorHash, metadata); 
         return true;
     } catch (err) {
-        _log_error(`Vector or the associated text file ${_getTextfilePathForVector(dbToUse, vectorhash)} could not be deleted`, db_path, err);
+        _log_error(`Vector or the associated text file ${_getTextfilePathForVector(dbToUse, vectorHash)} could not be deleted`, db_path, err);
         return false;
     }
 }
@@ -271,11 +273,11 @@ exports.query = async function(vectorToFindSimilarTo, topK, min_distance, metada
  * @param {string} db_path The DB path where this DB is stored. Must be a folder.
  */
 exports.uningest = async (metadata, db_path) => { 
-    const metadataToDelete = await _readMetadataObject(metadata);
+    const metadataToDelete = await _readMetadataObject(dbs[_get_db_hash(db_path)], metadata);
     if (!metadataToDelete) return;  // already doesn't exist, treat as success
 
     const vectorsToDelete = metadataToDelete.vector_objects;
-    for (const vector of vectorsToDelete) await exports.delete(vector, metadata, db_path); 
+    for (const vectorHash of vectorsToDelete) await exports.delete(vectorHash, metadata, db_path); 
 }
 
 /**
@@ -372,7 +374,7 @@ exports.get_vectordb = async function(db_path, embedding_generator, metadata_doc
                 embedding_generator, db_path),
         read: async (vector, metadata, notext) => exports.read(vector, metadata, notext, db_path),
         update: async (oldmetadata, newmetadata) => exports.update(oldmetadata, newmetadata, db_path),
-        delete: async (vector, metadata) =>  exports.delete(vector, metadata, db_path),    
+        delete: async (vector, metadata) => exports.delete(_get_vector_hash(vector), metadata, db_path),    
         uningest: async (metadata) => exports.uningest(metadata, db_path),
         query: async (vectorToFindSimilarTo, topK, min_distance, metadata_filter_function_or_metadata, notext) => exports.query(
             vectorToFindSimilarTo, topK, min_distance, metadata_filter_function_or_metadata, notext, db_path),
